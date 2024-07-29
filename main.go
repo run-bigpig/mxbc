@@ -161,6 +161,7 @@ func runTask() {
 }
 
 func main() {
+	fmt.Println("开始执行任务")
 	// 创建一个每分钟触发一次的Ticker
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
