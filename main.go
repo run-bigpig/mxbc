@@ -90,7 +90,7 @@ func submitSecretWord(secretWord string) {
 	}
 	jsonData["sign"] = genSign(jsonData, salt)
 	headers["Content-Type"] = "application/json;charset=UTF-8"
-	headers["Access-Token"] = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJ3eG1pbmlfMTQ0OTE3NjA2NTY2MjQ5Njc2OSIsImlhdCI6MTcyMjI0MzkwMX0.B8lI-lWkuJIxJnc_p9JFgCU_F2Q4GWSlPvWgf9I-5hFG7WGhUxTtxHN1YHaYrXy2Wbh0aD-_Xq5rnO_rDllhsQ"
+	headers["Access-Token"] = accessToken
 	resp, err := Do(http.MethodPost, url, jsonData, headers)
 	if err != nil {
 		fmt.Println("Error making request:", err)
@@ -149,11 +149,32 @@ func Do(method, url string, data, header map[string]interface{}) ([]byte, error)
 	return io.ReadAll(resp.Body)
 }
 
-func main() {
+func runTask() {
 	secretWord := getSecrteWord()
-	log.Println(secretWord)
+	fmt.Println("当场口令:", secretWord)
 	if secretWord == "" {
+		fmt.Println("未获取到当场口令")
 		return
 	}
 	submitSecretWord(secretWord)
+	fmt.Println("当前任务执行时间:", time.Now().Format("2006-01-02 15:04:05"))
+}
+
+func main() {
+	// 创建一个每分钟触发一次的Ticker
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			now := time.Now()
+			// 检查当前时间是否在11:00到20:59之间的整点
+			if now.Minute() == 0 && now.Hour() >= 11 && now.Hour() <= 20 {
+				//执行20次
+				for i := 0; i < 20; i++ {
+					runTask()
+				}
+			}
+		}
+	}
 }
