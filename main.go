@@ -5,12 +5,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -25,9 +28,8 @@ var (
 		"sec-ch-ua-mobile":   "?1",
 		"sec-ch-ua-platform": "\"Android\"",
 	}
-	salt = "c274bac6493544b89d9c4f9d8d542b84"
-
-	accessToken = "" //访问token 自行抓包
+	salt        = "c274bac6493544b89d9c4f9d8d542b84"
+	accessToken = ""
 )
 
 func genSign(jsonData map[string]interface{}, salt string) string {
@@ -83,7 +85,7 @@ func submitSecretWord(secretWord string) {
 	url := "https://mxsa.mxbc.net/api/v1/h5/marketing/secretword/confirm"
 	jsonData := map[string]interface{}{
 		"marketingId": "1816854086004391938",
-		"round":       "18:00",
+		"round":       fmt.Sprintf("%d:00", time.Now().Hour()),
 		"secretword":  secretWord,
 		"s":           2,
 		"stamp":       time.Now().UnixMilli(),
@@ -101,8 +103,10 @@ func submitSecretWord(secretWord string) {
 
 func Do(method, url string, data, header map[string]interface{}) ([]byte, error) {
 	var (
-		client = &http.Client{}
-		r      = &http.Request{}
+		client = &http.Client{
+			Transport: &http.Transport{Proxy: http.ProxyURL(getProxyIp())},
+		}
+		r = &http.Request{}
 	)
 	switch method {
 	case http.MethodGet:
@@ -142,25 +146,41 @@ func Do(method, url string, data, header map[string]interface{}) ([]byte, error)
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		fmt.Println("Error making request:", resp.Status)
-		return nil, errors.New("Error making request")
-	}
 	return io.ReadAll(resp.Body)
 }
 
-func runTask() {
-	secretWord := getSecrteWord()
-	fmt.Println("当场口令:", secretWord)
-	if secretWord == "" {
-		fmt.Println("未获取到当场口令")
-		return
+// 获取代理ip 大概实现了一下方法 具体获取代理ip的方式 需要具体实现
+func getProxyIp() *url.URL {
+	proxyAddr := "URL_ADDRESS"
+	u, err := url.Parse(proxyAddr)
+	if err != nil {
+		fmt.Println("Error parsing proxy address:", err)
+		return nil
 	}
-	submitSecretWord(secretWord)
-	fmt.Println("当前任务执行时间:", time.Now().Format("2006-01-02 15:04:05"))
+	return u
 }
 
+func runTask(secretWord string, number int) {
+	var wg sync.WaitGroup
+	wg.Add(number)
+	for i := 0; i < number; i++ {
+		go func() {
+			defer wg.Done()
+			submitSecretWord(secretWord)
+		}()
+	}
+	wg.Wait()
+}
+
+var token = flag.String("at", "", "./mxbc -at=ACCESS_TOKEN")
+
 func main() {
+	flag.Parse()
+	accessToken = *token
+	if accessToken == "" {
+		fmt.Println("请输入ACCESS_TOKEN")
+		return
+	}
 	fmt.Println("开始执行任务")
 	// 创建一个每分钟触发一次的Ticker
 	ticker := time.NewTicker(1 * time.Minute)
@@ -171,10 +191,14 @@ func main() {
 			now := time.Now()
 			// 检查当前时间是否在11:00到20:59之间的整点
 			if now.Minute() == 0 && now.Hour() >= 11 && now.Hour() <= 20 {
-				//执行20次
-				for i := 0; i < 20; i++ {
-					runTask()
+				secretWord := getSecrteWord()
+				fmt.Println("当场口令:", secretWord)
+				if secretWord == "" {
+					fmt.Println("未获取到当场口令")
+					return
 				}
+				//并发执行10次
+				runTask(secretWord, 10)
 			}
 		}
 	}
